@@ -82,10 +82,10 @@ def update_firebase_record(full_name):
         })
         print("Added new record")
     else:
-        record_ref.update({
-            "offense": (record.val()["offense"] + 1)
-        })
-        print(record.val()["offense"] + 1)
+        offense = db.child("Records").child(full_name).child("offense").get().val()
+        if offense <= 2:
+            db.child("Records").child(full_name).update({"offense": (offense+1)})
+        print("added offense")
 
 def handle_recognized_faces(face_names, face_images):
     for name, face_image in zip(face_names, face_images):
@@ -197,7 +197,7 @@ def train():
 
 
 def stream():
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
 
     embeddings_path = "embeddings.pkl"
     if os.path.exists(embeddings_path):
@@ -225,8 +225,8 @@ def stream():
             if not registering_face:
                 face_locations = detect_faces(frame, face_detector)
                 face_names = recognize_faces(frame, known_face_encodings, known_face_names, face_locations)
-                # face_images = extract_faces_from_image(frame, face_locations)
-                # handle_recognized_faces(face_names,face_images)
+                face_images = extract_faces_from_image(frame, face_locations)
+                handle_recognized_faces(face_names,face_images)
                 draw_boxes_and_labels(frame, face_locations, face_names)
             else:
                 cv2.putText(frame, f"Registering {full_name}, press Spacebar to capture", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
