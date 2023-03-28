@@ -11,7 +11,7 @@ import struct
 import time
 import pyrebase
 import firebase_admin
-
+from queue import Queue
 
 firebaseConfig = {
   "apiKey": "AIzaSyAKT3G3TthUZR6zULpaUZu6YrVmvT59JiU",
@@ -24,6 +24,7 @@ firebaseConfig = {
   "measurementId": "G-JY0FC6GDFT"
 }
 
+face_data_queue = Queue()
 
 firebase = pyrebase.initialize_app(firebaseConfig)
 
@@ -57,6 +58,25 @@ stream_thread.start()
 
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
+
+def monitor_angle_file():
+    global face_data_queue
+
+    last_contents = None
+    while True:
+        try:
+            with open('angle.txt', 'r') as f:
+                current_contents = f.read()
+                if current_contents != last_contents:
+                    last_contents = current_contents
+                    if not face_data_queue.empty():
+                        face_names, face_images = face_data_queue.get()
+                        # Call the handle_recognized_faces function here
+                        handle_recognized_faces(face_names, face_images)
+        except FileNotFoundError:
+            pass
+
+        time.sleep(1)  
 
 def save_face_to_firebase(full_name, face_image):
 
@@ -97,6 +117,8 @@ def handle_recognized_faces(face_names, face_images):
             # Increment the offense counter for the recognized face in Firebase Realtime Database
             update_firebase_record(name)
             print(f"Offense count updated for {name} in Firebase Realtime Database")
+    
+    return face_names, face_images
 
 def extract_faces_from_image(image, face_locations):
     face_images = []
@@ -197,7 +219,7 @@ def train():
 
 
 def stream():
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(0)
 
     embeddings_path = "embeddings.pkl"
     if os.path.exists(embeddings_path):
@@ -226,7 +248,7 @@ def stream():
                 face_locations = detect_faces(frame, face_detector)
                 face_names = recognize_faces(frame, known_face_encodings, known_face_names, face_locations)
                 face_images = extract_faces_from_image(frame, face_locations)
-                handle_recognized_faces(face_names,face_images)
+                face_data_queue.put((face_names, face_images ))
                 draw_boxes_and_labels(frame, face_locations, face_names)
             else:
                 cv2.putText(frame, f"Registering {full_name}, press Spacebar to capture", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
@@ -283,6 +305,10 @@ if __name__ == "__main__":
     # start receive_embeddings in a separate thread
     # t = threading.Thread(target=receive_embeddings)
     # t.start()
+    # Start the monitor_angle_file function in a separate thread
+    angle_monitor_thread = threading.Thread(target=monitor_angle_file)
+    angle_monitor_thread.daemon = True
+    angle_monitor_thread.start()
 
     # start the Flask server
     app.run(host='0.0.0.0', port= 5000, debug=False)
