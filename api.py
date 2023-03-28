@@ -9,6 +9,26 @@ import threading
 import socket
 import struct
 import time
+import pyrebase
+import firebase_admin
+
+
+firebaseConfig = {
+  "apiKey": "AIzaSyAKT3G3TthUZR6zULpaUZu6YrVmvT59JiU",
+  "authDomain": "noisewatch-70f20.firebaseapp.com",
+  "databaseURL": "https://noisewatch-70f20-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "projectId": "noisewatch-70f20",
+  "storageBucket": "noisewatch-70f20.appspot.com",
+  "messagingSenderId": "474011763806",
+  "appId": "1:474011763806:web:0227f2525e82dc18f1a0cf",
+  "measurementId": "G-JY0FC6GDFT"
+}
+
+
+firebase = pyrebase.initialize_app(firebaseConfig)
+
+db = firebase.database()
+storage = firebase.storage()
 
 app = Flask(__name__)
 
@@ -37,6 +57,53 @@ stream_thread.start()
 
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
+
+def save_face_to_firebase(full_name, face_image):
+
+    if face_image is None or face_image.size == 0:
+        print("Empty or invalid face image, skipping upload")
+        return 
+
+    image_name = f"{full_name}_{int(time.time())}.jpg"
+    storage_path = f"unknown_faces/{image_name}"
+    _, encoded_image = cv2.imencode('.jpg', face_image)
+    storage.child(storage_path).put(encoded_image.tobytes())
+    image_url = storage.child(image_name).get_url(None)
+    return image_url
+
+def update_firebase_record(full_name):
+    record_ref = db.child("Records").child(full_name)
+    record = record_ref.get()
+    print(record.val())
+    if not record.val():
+        record_ref.set({
+            "name": full_name,
+            "offense": 1
+        })
+        print("Added new record")
+    else:
+        record_ref.update({
+            "offense": (record.val()["offense"] + 1)
+        })
+        print(record.val()["offense"] + 1)
+
+def handle_recognized_faces(face_names, face_images):
+    for name, face_image in zip(face_names, face_images):
+        if name == "Unknown":
+            # Save the unknown face to Firebase Storage
+            image_url = save_face_to_firebase(name, face_image)
+            print(f"Unknown face saved to Firebase Storage: {image_url}")
+        else:
+            # Increment the offense counter for the recognized face in Firebase Realtime Database
+            update_firebase_record(name)
+            print(f"Offense count updated for {name} in Firebase Realtime Database")
+
+def extract_faces_from_image(image, face_locations):
+    face_images = []
+    for (top, right, bottom, left) in face_locations:
+        face_image = image[top:bottom, left:right]
+        face_images.append(face_image)
+    return face_images
 
 def detect_faces(image, face_detector):
     height, width, _ = image.shape
@@ -158,6 +225,8 @@ def stream():
             if not registering_face:
                 face_locations = detect_faces(frame, face_detector)
                 face_names = recognize_faces(frame, known_face_encodings, known_face_names, face_locations)
+                # face_images = extract_faces_from_image(frame, face_locations)
+                # handle_recognized_faces(face_names,face_images)
                 draw_boxes_and_labels(frame, face_locations, face_names)
             else:
                 cv2.putText(frame, f"Registering {full_name}, press Spacebar to capture", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
@@ -216,4 +285,4 @@ if __name__ == "__main__":
     # t.start()
 
     # start the Flask server
-    app.run(host='0.0.0.0', debug=False)
+    app.run(host='0.0.0.0', port= 5000, debug=False)
