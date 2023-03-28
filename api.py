@@ -60,15 +60,17 @@ mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
 def monitor_angle_file():
-    global face_data_queue
+    global face_data_queue, stream_state
 
     last_contents = None
     while True:
         try:
             with open('angle.txt', 'r') as f:
                 current_contents = f.read()
-                if current_contents != last_contents:
+                print(last_contents)
+                if current_contents != last_contents and stream_state:
                     last_contents = current_contents
+                    print("New content", last_contents)
                     if not face_data_queue.empty():
                         face_names, face_images = face_data_queue.get()
                         # Call the handle_recognized_faces function here
