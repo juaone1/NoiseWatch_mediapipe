@@ -24,7 +24,7 @@ firebaseConfig = {
   "measurementId": "G-JY0FC6GDFT"
 }
 
-face_data_queue = Queue()
+
 
 firebase = pyrebase.initialize_app(firebaseConfig)
 
@@ -36,10 +36,9 @@ app = Flask(__name__)
 stream_state = False
 frames_lock = threading.Lock()
 current_frame = None
-
-stream_state = False
-frames_lock = threading.Lock()
-current_frame = None
+# face_data_queue = Queue()
+face_names = []
+face_images = []
 
 def continuous_stream():
     global stream_state, frames_lock, current_frame
@@ -60,7 +59,7 @@ mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
 def monitor_angle_file():
-    global face_data_queue, stream_state
+    global stream_state, face_names, face_images
 
     last_contents = None
     while True:
@@ -71,10 +70,10 @@ def monitor_angle_file():
                 if current_contents != last_contents and stream_state:
                     last_contents = current_contents
                     print("New content", last_contents)
-                    if not face_data_queue.empty():
-                        face_names, face_images = face_data_queue.get()
-                        # Call the handle_recognized_faces function here
-                        handle_recognized_faces(face_names, face_images)
+
+                    print(face_names)
+                    # Call the handle_recognized_faces function here
+                    handle_recognized_faces(face_names, face_images)
         except FileNotFoundError:
             pass
 
@@ -120,7 +119,6 @@ def handle_recognized_faces(face_names, face_images):
             update_firebase_record(name)
             print(f"Offense count updated for {name} in Firebase Realtime Database")
     
-    return face_names, face_images
 
 def extract_faces_from_image(image, face_locations):
     face_images = []
@@ -221,6 +219,7 @@ def train():
 
 
 def stream():
+    global face_names, face_images
     cap = cv2.VideoCapture(0)
 
     embeddings_path = "embeddings.pkl"
@@ -250,7 +249,7 @@ def stream():
                 face_locations = detect_faces(frame, face_detector)
                 face_names = recognize_faces(frame, known_face_encodings, known_face_names, face_locations)
                 face_images = extract_faces_from_image(frame, face_locations)
-                face_data_queue.put((face_names, face_images ))
+                print("stream face name:", face_names)
                 draw_boxes_and_labels(frame, face_locations, face_names)
             else:
                 cv2.putText(frame, f"Registering {full_name}, press Spacebar to capture", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
