@@ -10,8 +10,7 @@ import socket
 import struct
 import time
 import pyrebase
-import firebase_admin
-from queue import Queue
+
 
 firebaseConfig = {
   "apiKey": "AIzaSyAKT3G3TthUZR6zULpaUZu6YrVmvT59JiU",
