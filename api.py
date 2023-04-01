@@ -219,7 +219,7 @@ def train():
 
 def stream():
     global face_names, face_images
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
 
     embeddings_path = "embeddings.pkl"
     if os.path.exists(embeddings_path):
