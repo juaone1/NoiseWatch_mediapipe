@@ -11,6 +11,8 @@ import struct
 import time
 import pyrebase
 
+from mediapipe.python.solutions import face_mesh as mp_face_mesh
+
 
 firebaseConfig = {
   "apiKey": "AIzaSyAKT3G3TthUZR6zULpaUZu6YrVmvT59JiU",
@@ -126,17 +128,32 @@ def extract_faces_from_image(image, face_locations):
         face_images.append(face_image)
     return face_images
 
-def detect_faces(image, face_detector):
+# def detect_faces(image, face_detector):
+#     height, width, _ = image.shape
+#     results = face_detector.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+
+#     face_locations = []
+#     if results.detections:
+#         for detection in results.detections:
+#             bboxC = detection.location_data.relative_bounding_box
+#             ih, iw, _ = image.shape
+#             x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
+#             face_locations.append((y, x+w, y+h, x))
+#     return face_locations
+
+def detect_faces(image, face_mesh):
     height, width, _ = image.shape
-    results = face_detector.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    results = face_mesh.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
     face_locations = []
-    if results.detections:
-        for detection in results.detections:
-            bboxC = detection.location_data.relative_bounding_box
-            ih, iw, _ = image.shape
-            x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
-            face_locations.append((y, x+w, y+h, x))
+    if results.multi_face_landmarks:
+        for face_landmarks in results.multi_face_landmarks:
+            x_min, y_min, x_max, y_max = width, height, 0, 0
+            for landmark in face_landmarks.landmark:
+                x, y = int(landmark.x * width), int(landmark.y * height)
+                x_min, y_min = min(x, x_min), min(y, y_min)
+                x_max, y_max = max(x, x_max), max(y, y_max)
+            face_locations.append((y_min, x_max, y_max, x_min))
     return face_locations
 
 def recognize_faces(image, known_face_encodings, known_face_names, face_locations):
@@ -219,7 +236,7 @@ def train():
 
 def stream():
     global face_names, face_images
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(0)
 
     embeddings_path = "embeddings.pkl"
     if os.path.exists(embeddings_path):
@@ -231,7 +248,12 @@ def stream():
             known_face_encodings, known_face_names = pickle.load(f)
 
 
-    with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detector:
+    with mp_face_mesh.FaceMesh(
+    static_image_mode=True,
+    max_num_faces=1,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,    
+    ) as face_detector:
         registering_face = False
         full_name = ""
 

@@ -1,12 +1,17 @@
 import cv2
 import mediapipe as mp
+from mediapipe.python.solutions import face_mesh as mp_face_mesh
 import os
 
 
-mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
-face_detector = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
+face_detector = mp_face_mesh.FaceMesh(
+    static_image_mode=True,
+    max_num_faces=1,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,    
+    ) 
 
 raw_data_dir = 'D:/Documents/Design2/DATASET'
 
@@ -32,10 +37,16 @@ for name in os.listdir(raw_data_dir):
         resized_image = cv2.cvtColor(cv2.resize(image, (640, 480)), cv2.COLOR_BGR2RGB)
         result = face_detector.process(resized_image)
 
-        if result.detections:
-            face_bboxC = result.detections[0].location_data.relative_bounding_box
-            ih, iw, _ = image.shape
-            x, y, w, h = int(face_bboxC.xmin * width), int(face_bboxC.ymin * height), int(face_bboxC.width * width), int(face_bboxC.height * height)
+        if result.multi_face_landmarks:
+            face_landmarks = result.multi_face_landmarks[0].landmark
+            face_points = [(int(landmark.x * width), int(landmark.y * height)) for landmark in face_landmarks]
+
+            min_x = min(point[0] for point in face_points)
+            max_x = max(point[0] for point in face_points)
+            min_y = min(point[1] for point in face_points)
+            max_y = max(point[1] for point in face_points)
+
+            x, y, w, h = min_x, min_y, max_x - min_x, max_y - min_y
             
             # Crop the face
             cropped_face_image = image[y:y+h, x:x+w]
