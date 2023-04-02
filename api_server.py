@@ -4,7 +4,6 @@ import face_recognition
 import numpy as np
 import os
 import pickle
-from flask import Flask, request, jsonify, Response
 import threading
 import socket
 import struct
@@ -13,7 +12,9 @@ import pyrebase
 import atexit
 
 from mediapipe.python.solutions import face_mesh as mp_face_mesh
-
+from deepface import DeepFace
+from deepface.commons import distance as dst
+from flask import Flask, request, jsonify, Response
 
 firebaseConfig = {
   "apiKey": "AIzaSyAKT3G3TthUZR6zULpaUZu6YrVmvT59JiU",
@@ -45,7 +46,14 @@ face_images = []
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
+
+def cleanup():
+    global cap
+    if cap is not None:
+        cap.release()
+        print("VideoCapture released")
 
 def save_face_to_firebase(full_name, face_image):
 
@@ -125,7 +133,6 @@ def register_face(image, full_name, face_detector):
 
 def gen_frames():
     global cap
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -136,12 +143,6 @@ def gen_frames():
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')  # concat frame one by one and show the result
                    
-
-def cleanup():
-    global cap
-    if cap is not None:
-        cap.release()
-        print("VideoCapture released")
 
 @app.route('/video_feed')
 def video_feed():
@@ -242,6 +243,76 @@ def send_embeddings_to_rpi():
     # Close the connection
     s.close()
 
+def save_embeddings_to_file(embeddings, filename):
+    with open(filename, 'wb') as f:
+        pickle.dump(embeddings, f)
+
+def load_embeddings_from_file(filename):
+    with open(filename, 'rb') as f:
+        embeddings = pickle.load(f)
+    return embeddings
+
+def load_images_from_dataset(dataset_path):
+    images = {}
+    for person_name in os.listdir(dataset_path):
+        person_dir = os.path.join(dataset_path, person_name)
+        for image_filename in os.listdir(person_dir):
+            image_path = os.path.join(person_dir, image_filename)
+            image = cv2.imread(image_path)
+            images[image_path] = image
+    return images
+
+def compare_input_image_to_dataset(input_image, dataset_path, embeddings_filename):
+
+    input_image_encoded = cv2.imencode('.jpg', input_image)[1]
+    input_image_bytes = input_image_encoded.tobytes()
+
+    if os.path.exists(embeddings_filename):
+        embeddings_cache = load_embeddings_from_file(embeddings_filename)
+    else:
+        dataset_images = load_images_from_dataset(dataset_path)
+        embeddings_cache = {}
+        for image_path, image in dataset_images.items():
+            embedding = DeepFace.represent(image, model_name='ArcFace', detector_backend='retinaface', enforce_detection=False)
+            embeddings_cache[image_path] = embedding
+
+        save_embeddings_to_file(embeddings_cache, embeddings_filename)
+
+    input_image_array = cv2.imdecode(np.frombuffer(input_image_bytes, np.uint8), cv2.IMREAD_COLOR)
+    input_embedding = DeepFace.represent(input_image_array, model_name='ArcFace', detector_backend='retinaface', enforce_detection=False)
+
+    max_similarity = 0
+    most_similar_image_path = None
+    for image_path, embedding in embeddings_cache.items():
+        cosine_similarity = dst.findCosineDistance(input_embedding, embedding)
+        similarity_percentage = (1 - cosine_similarity) * 100
+        if similarity_percentage > max_similarity:
+            max_similarity = similarity_percentage
+            most_similar_image_path = image_path
+
+    # Get the subfolder (full name) of the most similar image
+    most_similar_subfolder = os.path.dirname(most_similar_image_path).split(os.sep)[-1]
+
+    return most_similar_subfolder, max_similarity
+
+@app.route('/compare', methods=['POST'])
+def compare_images():
+    input_image = request.get_data()
+    input_image = cv2.imdecode(np.frombuffer(input_image, np.uint8), cv2.IMREAD_COLOR)
+    dataset_path = 'dataset'
+    embeddings_filename = "embeddings_cache.pkl"
+
+    most_similar_name, highest_percentage = compare_input_image_to_dataset(input_image, dataset_path, embeddings_filename)
+
+    if highest_percentage >= 50:
+        return jsonify({
+            "name": most_similar_name,
+            "percentage": highest_percentage
+        })
+    else:
+        return jsonify({
+            "error": "Face does not have a match..."
+        })
 
 
 if __name__ == "__main__":

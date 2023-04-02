@@ -54,7 +54,7 @@ def compare_input_image_to_dataset(input_image_path, dataset_path, embeddings_fi
     return most_similar_subfolder, max_similarity
 
 # Usage
-input_image_path = 'Unknown_1680007988.jpg'
+input_image_path = 'unknownkein.jpg'
 dataset_path = 'dataset'
 
 most_similar_name, highest_percentage = compare_input_image_to_dataset(input_image_path, dataset_path, "embeddings_cache.pkl")
