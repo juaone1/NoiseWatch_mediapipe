@@ -98,7 +98,7 @@ def update_firebase_record(full_name):
     record = record_ref.get()
     print(record.val())
     if not record.val():
-        record_ref.set({
+        db.child("Records").child(full_name).set({
             "name": full_name,
             "offense": 1
         })
