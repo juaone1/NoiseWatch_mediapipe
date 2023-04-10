@@ -10,6 +10,7 @@ import socket
 import struct
 import time
 import pyrebase
+import re
 
 from mediapipe.python.solutions import face_mesh as mp_face_mesh
 
@@ -59,6 +60,52 @@ stream_thread.start()
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
+
+def get_local_ip_address():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
+
+def socket_receiver():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    local_ip = get_local_ip_address()
+    s.bind((local_ip, 1234))
+    s.listen(5)
+
+    while True:
+        clientsocket, address = s.accept()
+        print(f"Connection from {address} has been established!")
+
+        file_type = clientsocket.recv(1024).decode()
+        clientsocket.send(bytes("File type received", "utf-8"))
+
+        length_prefix = clientsocket.recv(4)
+        data_length = struct.unpack("!I", length_prefix)[0]
+
+        received_bytes = 0
+        file_data = b""
+        while received_bytes < data_length:
+            remaining_bytes = data_length - received_bytes
+            data = clientsocket.recv(4096 if remaining_bytes > 4096 else remaining_bytes)
+            received_bytes += len(data)
+            file_data += data
+
+        if file_type == "pickle":
+            with open(os.path.join("server", "embeddings.pkl"), "wb") as f:
+                f.write(file_data)
+        elif file_type == "image":
+            with open(os.path.join("server", "received_image.png"), "wb") as f:
+                f.write(file_data)
+
+        clientsocket.send(bytes("File data received", "utf-8"))
+        clientsocket.close()
+
 def monitor_angle_file():
     global stream_state, face_names, face_images
 
@@ -94,19 +141,20 @@ def save_face_to_firebase(full_name, face_image):
     return image_url
 
 def update_firebase_record(full_name):
-    record_ref = db.child("Records").child(full_name)
+    sanitized_name = re.sub('[\s.]', '_', full_name)
+    record_ref = db.child("Records").child(sanitized_name)
     record = record_ref.get()
     print(record.val())
     if not record.val():
-        db.child("Records").child(full_name).set({
+        db.child("Records").child(sanitized_name).set({
             "name": full_name,
             "offense": 1
         })
         print("Added new record")
     else:
-        offense = db.child("Records").child(full_name).child("offense").get().val()
+        offense = db.child("Records").child(sanitized_name).child("offense").get().val()
         if offense <= 2:
-            db.child("Records").child(full_name).update({"offense": (offense+1)})
+            db.child("Records").child(sanitized_name).update({"offense": (offense+1)})
         print("added offense")
 
 def handle_recognized_faces(face_names, face_images):
@@ -164,7 +212,7 @@ def recognize_faces(image, known_face_encodings, known_face_names, face_location
             face_names.append("Unknown")
             continue
 
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.5)
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.45)
         name = "Unknown"
 
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
@@ -238,7 +286,7 @@ def stream():
     global face_names, face_images
     cap = cv2.VideoCapture(0)
 
-    embeddings_path = "embeddings.pkl"
+    embeddings_path = "server/embeddings.pkl"
     if os.path.exists(embeddings_path):
         with open(embeddings_path, "rb") as f:
             known_face_encodings, known_face_names = pickle.load(f)
@@ -324,9 +372,12 @@ def generate_frames():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    # start receive_embeddings in a separate thread
-    # t = threading.Thread(target=receive_embeddings)
-    # t.start()
+    # start socket_receiver in a separate thread
+
+    socket_server_thread = threading.Thread(target=socket_receiver)
+    socket_server_thread.daemon = True
+    socket_server_thread.start()
+
     # Start the monitor_angle_file function in a separate thread
     angle_monitor_thread = threading.Thread(target=monitor_angle_file)
     angle_monitor_thread.daemon = True
