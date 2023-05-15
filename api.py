@@ -42,6 +42,12 @@ current_frame = None
 face_names = []
 face_images = []
 
+cap = cv2.VideoCapture(0)
+
+mp_face_detection = mp.solutions.face_detection
+mp_drawing = mp.solutions.drawing_utils
+
+
 def continuous_stream():
     global stream_state, frames_lock, current_frame
     while True:
@@ -53,12 +59,6 @@ def continuous_stream():
                         break
         else:
             time.sleep(0.1)
-
-stream_thread = threading.Thread(target=continuous_stream)
-stream_thread.start()
-
-mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
 
 
 def get_local_ip_address():
@@ -114,7 +114,7 @@ def monitor_angle_file():
         try:
             with open('angle.txt', 'r') as f:
                 current_contents = f.read()
-                print(last_contents)
+                # print(last_contents)
                 if current_contents != last_contents and stream_state:
                     last_contents = current_contents
                     print("New content", last_contents)
@@ -212,7 +212,7 @@ def recognize_faces(image, known_face_encodings, known_face_names, face_location
             face_names.append("Unknown")
             continue
 
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.45)
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.35   )
         name = "Unknown"
 
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
@@ -284,12 +284,14 @@ def train():
 
 def stream():
     global face_names, face_images
-    cap = cv2.VideoCapture(0)
-
+    # cap = cv2.VideoCapture(0)
+    count = 0
+    counter = 0
     embeddings_path = "server/embeddings.pkl"
     if os.path.exists(embeddings_path):
         with open(embeddings_path, "rb") as f:
             known_face_encodings, known_face_names = pickle.load(f)
+            print(known_face_names)
     else:
         train()
         with open(embeddings_path, "rb") as f:
@@ -314,14 +316,16 @@ def stream():
             results = face_detector.process(rgb_frame)
 
 
-            if not registering_face:
+            if not registering_face and counter % 12 == 0:
+                count += 1
                 face_locations = detect_faces(frame, face_detector)
                 face_names = recognize_faces(frame, known_face_encodings, known_face_names, face_locations)
                 face_images = extract_faces_from_image(frame, face_locations)
-                print("stream face name:", face_names)
+                print(f"{count} : stream face name: {face_names}")
                 draw_boxes_and_labels(frame, face_locations, face_names)
-            else:
-                cv2.putText(frame, f"Registering {full_name}, press Spacebar to capture", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            counter += 1
+            # else:
+            #     cv2.putText(frame, f"Registering {full_name}, press Spacebar to capture", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
             ret, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
@@ -372,6 +376,10 @@ def generate_frames():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+
+
+    stream_thread = threading.Thread(target=continuous_stream)
+    stream_thread.start()
     # start socket_receiver in a separate thread
 
     socket_server_thread = threading.Thread(target=socket_receiver)
