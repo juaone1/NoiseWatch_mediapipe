@@ -164,7 +164,7 @@ def recognize_faces(image, known_face_encodings, known_face_names, face_location
             face_names.append("Unknown")
             continue
 
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.5)
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.4)
         name = "Unknown"
 
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
@@ -242,6 +242,7 @@ def stream():
     if os.path.exists(embeddings_path):
         with open(embeddings_path, "rb") as f:
             known_face_encodings, known_face_names = pickle.load(f)
+            print(known_face_names)
     else:
         train()
         with open(embeddings_path, "rb") as f:
@@ -334,3 +335,4 @@ if __name__ == "__main__":
 
     # start the Flask server
     app.run(host='0.0.0.0', port= 5000, debug=False)
+

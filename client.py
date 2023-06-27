@@ -52,7 +52,7 @@ import pickle
 
 # Set up socket and connect to the server
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_ip = "192.168.1.21"
+server_ip = "192.168.1.13"
 s.connect((server_ip, 1234))
 
 # Send the file type

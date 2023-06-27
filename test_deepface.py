@@ -28,6 +28,7 @@ def compare_input_image_to_dataset(input_image_path, dataset_path, embeddings_fi
 
     if os.path.exists(embeddings_filename):
         embeddings_cache = load_embeddings_from_file(embeddings_filename)
+        print(embeddings_cache)
     else:
         dataset_images = load_images_from_dataset(dataset_path)
         embeddings_cache = {}
@@ -54,12 +55,12 @@ def compare_input_image_to_dataset(input_image_path, dataset_path, embeddings_fi
     return most_similar_subfolder, max_similarity
 
 # Usage
-input_image_path = 'unknownkein.jpg'
+input_image_path = '335515306_155366270378646_3713007405504447366_n.jpg'
 dataset_path = 'dataset'
 
 most_similar_name, highest_percentage = compare_input_image_to_dataset(input_image_path, dataset_path, "embeddings_cache.pkl")
 
-if highest_percentage >= 50:
+if highest_percentage >= 70:
     print("Most similar name:", most_similar_name)
     print(f"Highest similarity percentage: {highest_percentage} %")
 
