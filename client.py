@@ -52,7 +52,7 @@ import pickle
 
 # Set up socket and connect to the server
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_ip = "192.168.1.21"
+server_ip = "192.168.1.18"
 s.connect((server_ip, 1234))
 
 # Send the file type
@@ -64,7 +64,7 @@ response = s.recv(1024).decode()
 print(response)
 
 # Send the data length prefix
-with open("embeddings.pkl", "rb") as f:
+with open("server/embeddings.pkl", "rb") as f:
     data = f.read()
     data_length_prefix = struct.pack("!I", len(data))
     s.sendall(data_length_prefix)

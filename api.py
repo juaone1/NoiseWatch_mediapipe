@@ -36,6 +36,8 @@ storage = firebase.storage()
 app = Flask(__name__)
 
 stream_state = False
+new_angle = False
+recorded = False
 frames_lock = threading.Lock()
 current_frame = None
 # face_data_queue = Queue()
@@ -107,25 +109,29 @@ def socket_receiver():
         clientsocket.close()
 
 def monitor_angle_file():
-    global stream_state, face_names, face_images
+    global stream_state, face_names, face_images, last_contents, current_contents, new_angle, recorded
+    # # cap = cv2.VideoCapture(0)
 
     last_contents = None
     while True:
+        
         try:
             with open('angle.txt', 'r') as f:
+                time.sleep(1)
                 current_contents = f.read()
-                # print(last_contents)
+                #print("Angle:", current_contents)
+                #print("Last content:", last_contents)
                 if current_contents != last_contents and stream_state:
+                    new_angle = True
                     last_contents = current_contents
-                    print("New content", last_contents)
-
-                    print(face_names)
+                    print("New angle", last_contents)        
+                    # print(face_names)
                     # Call the handle_recognized_faces function here
-                    handle_recognized_faces(face_names, face_images)
+                    # handle_recognized_faces(face_names, face_images)
         except FileNotFoundError:
             pass
 
-        time.sleep(1)  
+        # time.sleep(1)  
 
 def save_face_to_firebase(full_name, face_image):
 
@@ -144,7 +150,7 @@ def update_firebase_record(full_name):
     sanitized_name = re.sub('[\s.]', '_', full_name)
     record_ref = db.child("Records").child(sanitized_name)
     record = record_ref.get()
-    print(record.val())
+    # print(record.val())
     if not record.val():
         db.child("Records").child(sanitized_name).set({
             "name": full_name,
@@ -159,11 +165,14 @@ def update_firebase_record(full_name):
 
 def handle_recognized_faces(face_names, face_images):
     for name, face_image in zip(face_names, face_images):
+        print("handling face...", name)
         if name == "Unknown":
+            print("unkown")
             # Save the unknown face to Firebase Storage
             image_url = save_face_to_firebase(name, face_image)
             print(f"Unknown face saved to Firebase Storage: {image_url}")
         else:
+            print("Name:", name)
             # Increment the offense counter for the recognized face in Firebase Realtime Database
             update_firebase_record(name)
             print(f"Offense count updated for {name} in Firebase Realtime Database")
@@ -212,7 +221,7 @@ def recognize_faces(image, known_face_encodings, known_face_names, face_location
             face_names.append("Unknown")
             continue
 
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.35   )
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.5   )
         name = "Unknown"
 
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
@@ -283,15 +292,16 @@ def train():
 
 
 def stream():
-    global face_names, face_images
-    # cap = cv2.VideoCapture(0)
+    global face_names, face_images, last_contents, current_contents, new_angle
+    # # cap = cv2.VideoCapture(0)
     count = 0
     counter = 0
     embeddings_path = "server/embeddings.pkl"
     if os.path.exists(embeddings_path):
         with open(embeddings_path, "rb") as f:
             known_face_encodings, known_face_names = pickle.load(f)
-            print(known_face_names)
+
+        # print(known_face_names)
     else:
         train()
         with open(embeddings_path, "rb") as f:
@@ -321,6 +331,17 @@ def stream():
                 face_locations = detect_faces(frame, face_detector)
                 face_names = recognize_faces(frame, known_face_encodings, known_face_names, face_locations)
                 face_images = extract_faces_from_image(frame, face_locations)
+                if (face_names):
+                    print("Face name:", face_names)
+                    if (new_angle):
+                       print("new angle")
+                       handle_recognized_faces(face_names,face_images)
+                       new_angle = False
+                    # last_contents = current_contents
+                    # handle_recognized_faces
+                else:
+                    if (new_angle):
+                        new_angle = False
                 print(f"{count} : stream face name: {face_names}")
                 draw_boxes_and_labels(frame, face_locations, face_names)
             counter += 1
