@@ -221,7 +221,7 @@ def recognize_faces(image, known_face_encodings, known_face_names, face_location
             face_names.append("Unknown")
             continue
 
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.5   )
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance= 0.35   )
         name = "Unknown"
 
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
@@ -414,3 +414,4 @@ if __name__ == "__main__":
 
     # start the Flask server
     app.run(host='0.0.0.0', port= 5000, debug=False)
+

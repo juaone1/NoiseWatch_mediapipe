@@ -13,7 +13,7 @@ face_detector = mp_face_mesh.FaceMesh(
     min_tracking_confidence=0.5,    
     ) 
 
-raw_data_dir = 'D:/Documents/Design2/DATASET'
+raw_data_dir = 'C:/Users/Calvin Kein/Documents/FACES3.0/'
 
 for name in os.listdir(raw_data_dir):
     name_dir = os.path.join(raw_data_dir, name)

@@ -46,7 +46,7 @@ face_images = []
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
 
 
 def cleanup():
@@ -173,6 +173,8 @@ def register():
 @app.route('/train', methods=['POST'])
 def train():
     # Load existing embeddings, if available
+    print("[INFO]Training...")
+
     embeddings_path = "embeddings.pkl"
     if os.path.exists(embeddings_path):
         with open(embeddings_path, "rb") as f:
@@ -200,48 +202,112 @@ def train():
         pickle.dump((known_face_encodings, known_face_names), f)
     
     if os.path.exists(embeddings_path):
-        # send_embeddings_to_rpi()
+        send_embeddings_to_rpi()
         return "Training complete"
     else:
         print("No embeddings.pkl file")
         return "Error training face recognition model.", 500
-    
 
 def send_embeddings_to_rpi():
+    # Set up socket and connect to the first Raspberry Pi
+    s1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_ip_1 = "192.168.1.120"  # rpi_1 ip
+    s1.connect((server_ip_1, 1234))
 
-    # Set up socket and connect to the server
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_ip = "192.168.1.21"
-    s.connect((server_ip, 1234))
+    # Set up socket and connect to the second Raspberry Pi
+    s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_ip_2 = "192.168.1.121"  # rpi_2 ip
+    s2.connect((server_ip_2, 1234))
 
-    # Send the file type
+    # Send the file type to the first Raspberry Pi
     file_type = "pickle"
-    s.send(bytes(file_type, "utf-8"))
+    s1.send(bytes(file_type, "utf-8"))
 
-    # Receive a response from the server to indicate that the file type has been received
-    response = s.recv(1024).decode()
+    # Receive a response from the first Raspberry Pi
+    response = s1.recv(1024).decode()
     print(response)
 
-    # Send the data length prefix
+    # Send the file type to the second Raspberry Pi
+    s2.send(bytes(file_type, "utf-8"))
+
+    # Receive a response from the second Raspberry Pi
+    response = s2.recv(1024).decode()
+    print(response)
+
+    # Send the data length prefix to the first Raspberry Pi
     with open("embeddings.pkl", "rb") as f:
         data = f.read()
         data_length_prefix = struct.pack("!I", len(data))
-        s.sendall(data_length_prefix)
+        s1.sendall(data_length_prefix)
 
-    # Send the file data in chunks
+    # Send the file data in chunks to the first Raspberry Pi
     bytes_sent = 0
     while bytes_sent < len(data):
         remaining_bytes = len(data) - bytes_sent
         chunk_size = 4096 if remaining_bytes > 4096 else remaining_bytes
-        s.send(data[bytes_sent:bytes_sent+chunk_size])
+        s1.send(data[bytes_sent:bytes_sent + chunk_size])
         bytes_sent += chunk_size
 
-    # Receive a response from the server to indicate that the file data has been received
-    response = s.recv(1024).decode()
+    # Receive a response from the first Raspberry Pi
+    response = s1.recv(1024).decode()
     print(response)
 
-    # Close the connection
-    s.close()
+    # Send the data length prefix to the second Raspberry Pi
+    s2.sendall(data_length_prefix)
+
+    # Send the file data in chunks to the second Raspberry Pi
+    bytes_sent = 0
+    while bytes_sent < len(data):
+        remaining_bytes = len(data) - bytes_sent
+        chunk_size = 4096 if remaining_bytes > 4096 else remaining_bytes
+        s2.send(data[bytes_sent:bytes_sent + chunk_size])
+        bytes_sent += chunk_size
+
+    # Receive a response from the second Raspberry Pi
+    response = s2.recv(1024).decode()
+    print(response)
+
+    # Close the connections
+    s1.close()
+    s2.close()    
+
+# def send_embeddings_to_rpi():
+
+#     # Set up socket and connect to the server
+#     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#     server_ip_1 = "192.168.1.120" #rpi_1 ip
+#     server_ip_2 = "192.168.1.121" #rpi_2 ip
+#     s.connect((server_ip_1, 1234))
+#     s.connect((server_ip_2, 1234))
+
+#     # Send the file type
+#     file_type = "pickle"
+#     s.send(bytes(file_type, "utf-8"))
+
+#     # Receive a response from the server to indicate that the file type has been received
+#     response = s.recv(1024).decode()
+#     print(response)
+
+#     # Send the data length prefix
+#     with open("embeddings.pkl", "rb") as f:
+#         data = f.read()
+#         data_length_prefix = struct.pack("!I", len(data))
+#         s.sendall(data_length_prefix)
+
+#     # Send the file data in chunks
+#     bytes_sent = 0
+#     while bytes_sent < len(data):
+#         remaining_bytes = len(data) - bytes_sent
+#         chunk_size = 4096 if remaining_bytes > 4096 else remaining_bytes
+#         s.send(data[bytes_sent:bytes_sent+chunk_size])
+#         bytes_sent += chunk_size
+
+#     # Receive a response from the server to indicate that the file data has been received
+#     response = s.recv(1024).decode()
+#     print(response)
+
+#     # Close the connection
+#     s.close()
 
 def save_embeddings_to_file(embeddings, filename):
     with open(filename, 'wb') as f:
@@ -293,25 +359,26 @@ def compare_input_image_to_dataset(input_image, dataset_path, embeddings_filenam
     # Get the subfolder (full name) of the most similar image
     most_similar_subfolder = os.path.dirname(most_similar_image_path).split(os.sep)[-1]
 
-    return most_similar_subfolder, max_similarity
+    return most_similar_subfolder, round(max_similarity,2)
 
 @app.route('/compare', methods=['POST'])
 def compare_images():
     input_image = request.get_data()
     input_image = cv2.imdecode(np.frombuffer(input_image, np.uint8), cv2.IMREAD_COLOR)
     dataset_path = 'dataset'
-    embeddings_filename = "embeddings_cache.pkl"
+    embeddings_filename = "embeddings.pkl"
 
     most_similar_name, highest_percentage = compare_input_image_to_dataset(input_image, dataset_path, embeddings_filename)
 
-    if highest_percentage >= 50:
+    if highest_percentage >= 80:
         return jsonify({
             "name": most_similar_name,
             "percentage": highest_percentage
         })
     else:
         return jsonify({
-            "error": "Face does not have a match..."
+            "name": "No match",
+            "percentage": 0
         })
 
 
